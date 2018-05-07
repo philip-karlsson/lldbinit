@@ -1358,7 +1358,6 @@ def bprva(debugger, command, result, dict):
         sec = mod.GetSectionAtIndex(1)
         loadaddr = sec.GetLoadAddress(target)
 
-    print(value)
     addrVal = loadaddr + value
     padding = 16 # 64 bits
 
