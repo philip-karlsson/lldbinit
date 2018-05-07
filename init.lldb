@@ -1,1 +1,3 @@
 command script import ~/lldbinit/lldbinit.py
+break_entrypoint
+ctx
