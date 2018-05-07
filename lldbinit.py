@@ -257,6 +257,7 @@ def __lldb_init_module(debugger, internal_dict):
     lldb.debugger.GetCommandInterpreter().HandleCommand("command script add -f lldbinit.bht bht", res)
     lldb.debugger.GetCommandInterpreter().HandleCommand("command script add -f lldbinit.bpt bpt", res)
     lldb.debugger.GetCommandInterpreter().HandleCommand("command script add -f lldbinit.bpn bpn", res)
+    lldb.debugger.GetCommandInterpreter().HandleCommand("command script add -f lldbinit.bprva bprva", res)
     # disable a breakpoint or all
     lldb.debugger.GetCommandInterpreter().HandleCommand("command script add -f lldbinit.bpd bpd", res)
     lldb.debugger.GetCommandInterpreter().HandleCommand("command script add -f lldbinit.bpda bpda", res)
@@ -368,6 +369,7 @@ def lldbinitcmds(debugger, command, result, dict):
     [ "bcmd", "alias to breakpoint command add"],
     [ "bpl", "list all breakpoints"],
     [ "bpn", "temporarly breakpoint next instruction" ],
+    [ "bprva", "add break point at rva"],
     [ "break_entrypoint", "launch target and stop at entrypoint" ],
     [ "skip", "skip current instruction" ],
     [ "int3", "patch memory address with INT3" ],
@@ -1317,6 +1319,52 @@ Note: control flow is not respected, it breakpoints next instruction in memory.
     breakpoint.SetThreadID(get_frame().GetThread().GetThreadID())
 
     print "[+] Set temporary breakpoint at 0x%x" % next_addr
+
+
+# Break at rva, should be able to specify module also. Next step!
+def bprva(debugger, command, result, dict):
+    # 'Set breakpoint at rva'
+    help = """
+    Set a breakpoint at RVA.
+
+    Syntax: bprva <address>
+
+    Note: expressions supported, do not use spaces between operators.
+    """
+
+    cmd = command.split()
+    if len(cmd) != 1:
+        print "[-] error: please insert a breakpoint address."
+        print ""
+        print help
+        return
+    if cmd[0] == "help":
+        print help
+        return
+
+    value = evaluate(cmd[0])
+    if value == None:
+        print "[-] error: invalid input value."
+        print ""
+        print help
+        return
+
+    target = get_target()
+    mod = target.GetModuleAtIndex(0)
+    sec = mod.GetSectionAtIndex(0)
+    loadaddr = sec.GetLoadAddress(target)
+
+    if loadaddr == lldb.LLDB_INVALID_ADDRESS:
+        sec = mod.GetSectionAtIndex(1)
+        loadaddr = sec.GetLoadAddress(target)
+
+    print(value)
+    addrVal = loadaddr + value
+    padding = 16 # 64 bits
+
+    hexStr = "{0:#0{1}x}".format(addrVal, padding)
+    debugger.HandleCommand("breakpoint set -a " + hexStr)
+    print "[+] Set breakpoint at RVA 0x{:x}".format(value)
 
 # command that sets rax to 1 or 0 and returns right away from current function
 # technically just a shortcut to "thread return"
