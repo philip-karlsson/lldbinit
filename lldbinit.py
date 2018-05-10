@@ -69,6 +69,8 @@ lldb -> debugger -> target -> process -> thread -> frame(s)
                                       -> thread -> frame(s)
 '''
 
+from pdb import set_trace as bp
+
 if __name__ == "__main__":
     print("Run only as script from lldb... Not as standalone program")
 
@@ -216,7 +218,7 @@ def __lldb_init_module(debugger, internal_dict):
     
     # settings
     lldb.debugger.GetCommandInterpreter().HandleCommand("settings set target.x86-disassembly-flavor intel", res)
-    lldb.debugger.GetCommandInterpreter().HandleCommand("settings set prompt \"(lldbinit) \"", res)
+    lldb.debugger.GetCommandInterpreter().HandleCommand("settings set prompt \"(pdbg) \"", res)
     #lldb.debugger.GetCommandInterpreter().HandleCommand("settings set prompt \"\033[01;31m(lldb) \033[0m\"", res);
     lldb.debugger.GetCommandInterpreter().HandleCommand("settings set stop-disassembly-count 0", res)
 
@@ -258,6 +260,8 @@ def __lldb_init_module(debugger, internal_dict):
     lldb.debugger.GetCommandInterpreter().HandleCommand("command script add -f lldbinit.bpt bpt", res)
     lldb.debugger.GetCommandInterpreter().HandleCommand("command script add -f lldbinit.bpn bpn", res)
     lldb.debugger.GetCommandInterpreter().HandleCommand("command script add -f lldbinit.bprva bprva", res)
+    lldb.debugger.GetCommandInterpreter().HandleCommand("command script add -f lldbinit.bprvam bprvam", res)
+    lldb.debugger.GetCommandInterpreter().HandleCommand("command script add -f lldbinit.bpm bpm", res)
     # disable a breakpoint or all
     lldb.debugger.GetCommandInterpreter().HandleCommand("command script add -f lldbinit.bpd bpd", res)
     lldb.debugger.GetCommandInterpreter().HandleCommand("command script add -f lldbinit.bpda bpda", res)
@@ -267,6 +271,10 @@ def __lldb_init_module(debugger, internal_dict):
     # enable a breakpoint or all
     lldb.debugger.GetCommandInterpreter().HandleCommand("command script add -f lldbinit.bpe bpe", res)
     lldb.debugger.GetCommandInterpreter().HandleCommand("command script add -f lldbinit.bpea bpea", res)
+    #
+    # Watchpoint related commands
+    #
+    lldb.debugger.GetCommandInterpreter().HandleCommand("command script add -f lldbinit.wp wp", res)
     # commands to set temporary int3 patches and restore original bytes
     lldb.debugger.GetCommandInterpreter().HandleCommand("command script add -f lldbinit.int3 int3", res)
     lldb.debugger.GetCommandInterpreter().HandleCommand("command script add -f lldbinit.rint3 rint3", res)
@@ -369,7 +377,10 @@ def lldbinitcmds(debugger, command, result, dict):
     [ "bcmd", "alias to breakpoint command add"],
     [ "bpl", "list all breakpoints"],
     [ "bpn", "temporarly breakpoint next instruction" ],
-    [ "bprva", "add break point at rva"],
+    [ "bprva", "add breakpoint at rva"],
+    [ "bprvam", "add breakpoint at rva in module"],
+    [ "bpm", "recursivly add breakpoint to module"],
+    [ "wp", "adds a read watchpoint at rva"],
     [ "break_entrypoint", "launch target and stop at entrypoint" ],
     [ "skip", "skip current instruction" ],
     [ "int3", "patch memory address with INT3" ],
@@ -419,6 +430,33 @@ def tester(debugger, command, result, dict):
     #return_value.value = "1"
     #thread.ReturnFromFrame(frame, return_value)
 
+
+#
+# Helpers
+#
+def get_addr_from_section(target, index):
+    mod = target.GetModuleAtIndex(index)
+    sec = mod.GetSectionAtIndex(0)
+    loadaddr = sec.GetLoadAddress(target)
+
+    if loadaddr == lldb.LLDB_INVALID_ADDRESS:
+        sec = mod.GetSectionAtIndex(1)
+        loadaddr = sec.GetLoadAddress(target)
+    return loadaddr
+
+def get_slide(module): 
+    slide = 0x0
+    target = get_target()
+    numMods = target.GetNumModules()
+    if None == module:
+        slide = get_addr_from_section(target, 0)
+    else:
+        for i in range(0, numMods):
+            m = target.GetModuleAtIndex(i)
+            fileSpec = m.GetFileSpec()
+            if(fileSpec.GetFilename() == module):
+                slide = get_addr_from_section(target, i)
+    return slide
 
 #
 # Settings related commands
@@ -1364,6 +1402,109 @@ def bprva(debugger, command, result, dict):
     hexStr = "{0:#0{1}x}".format(addrVal, padding)
     debugger.HandleCommand("breakpoint set -a " + hexStr)
     print "[+] Set breakpoint at RVA 0x{:x}".format(value)
+
+# Break at rva in module (still to be done..)
+def bprvam(debugger, command, result, dict):
+    # 'Set breakpoint at rva'
+    help = """
+    Set a breakpoint at RVA in a module.
+
+    Syntax: bprva <module> <address>
+
+    Note: expressions supported, do not use spaces between operators.
+    """
+
+    cmd = command.split()
+    if len(cmd) != 1:
+        print "[-] error: please insert a breakpoint address."
+        print ""
+        print help
+        return
+    if cmd[0] == "help":
+        print help
+        return
+
+    value = evaluate(cmd[0])
+    if value == None:
+        print "[-] error: invalid input value."
+        print ""
+        print help
+        return
+
+    # Function for breakpoint
+    bp()
+
+    target = get_target()
+    mod = target.GetModuleAtIndex(0)
+    sec = mod.GetSectionAtIndex(0)
+    loadaddr = sec.GetLoadAddress(target)
+
+    if loadaddr == lldb.LLDB_INVALID_ADDRESS:
+        sec = mod.GetSectionAtIndex(1)
+        loadaddr = sec.GetLoadAddress(target)
+
+    addrVal = loadaddr + value
+    padding = 16 # 64 bits
+
+    hexStr = "{0:#0{1}x}".format(addrVal, padding)
+    debugger.HandleCommand("breakpoint set -a " + hexStr)
+    print "[+] Set breakpoint at RVA 0x{:x}".format(value)
+
+# Recursivly adds breakpoint to all functions of a module
+def bpm(debugger, command, result, dict):
+    # 'Set breakpoint at rva'
+    help = """
+    Recursivly add breakpoint to module.
+
+    Syntax: bpm <module>
+
+    """
+
+    cmd = command.split()
+    if len(cmd) != 1:
+        print "[-] error: please enter a module to add breakpoints to."
+        print ""
+        print help
+        return
+    if cmd[0] == "help":
+        print help
+        return
+
+    debugger.HandleCommand("break set -r . -s %s" % cmd[0])
+
+
+# Add watch point
+def wp(debugger, command, result, dict):
+    # 'Set watchpoint at rva'
+    help = """
+    Adds a watch point at RVA.
+
+    Syntax: wp <address> (optional)<module>
+
+    """
+
+    cmd = command.split()
+    if len(cmd) < 1:
+        print "[-] error: plese fill in the correct params."
+        print ""
+        print help
+        return
+    if cmd[0] == "help":
+        print help
+        return
+
+    if len(cmd) == 1:
+        slide = get_slide(None)
+    else:
+        slide = get_slide(cmd[1])
+
+    addr = evaluate(cmd[0])
+    # Add the slide
+    addr = addr + slide
+    padding = 16 # 64 bits
+    hexStr = "{0:#0{1}x}".format(addr, padding)
+    cmd = "watchpoint s e -w read -- " + hexStr
+    debugger.HandleCommand(cmd)
 
 # command that sets rax to 1 or 0 and returns right away from current function
 # technically just a shortcut to "thread return"
