@@ -232,6 +232,8 @@ def __lldb_init_module(debugger, internal_dict):
     # commands
     lldb.debugger.GetCommandInterpreter().HandleCommand("command script add -f lldbinit.lldbinitcmds lldbinitcmds", res)
     lldb.debugger.GetCommandInterpreter().HandleCommand("command script add -f lldbinit.IphoneConnect iphone", res)
+    lldb.debugger.GetCommandInterpreter().HandleCommand("command script add -f lldbinit.stop stop", res)
+    lldb.debugger.GetCommandInterpreter().HandleCommand("command script add -f lldbinit.ss ss", res)
     #
     # dump memory commands
     #
@@ -394,6 +396,8 @@ def lldbinitcmds(debugger, command, result, dict):
     [ "cfa/cfc/cfd/cfi/cfo/cfp/cfs/cft/cfz", "change CPU flags" ],
     [ "u", "dump instructions" ],
     [ "iphone", "connect to debugserver running on iPhone" ],
+    [ "stop", "interrupts the process" ],
+    [ "ss", "source a file of commands to run" ],
     [ "ctx/context", "show current instruction pointer CPU context" ],
     [ "show_loadcmds", "show otool output of Mach-O load commands" ],
     [ "show_header", "show otool output of Mach-O header" ],
@@ -455,6 +459,40 @@ def get_slide(module):
             if(fileSpec.GetFilename() == module):
                 slide = get_addr_from_section(target, i)
     return slide
+
+def stop(debugger, command, result, dict):
+    help = "Interrupts the process"
+    cmd = command.split()
+    if not (len(cmd) == 0):
+        print help
+    else:
+        lldb.debugger.HandleCommand("process interrupt")
+
+def ss(debugger, command, result, dict):
+    help = """
+    Source script file
+    ss <script>
+    """
+    cmd = command.split()
+    if len(cmd) == 0:
+        print help
+    else:
+        script = cmd[0]
+        try:
+            f = open(script, "r")
+        except:
+            output("[-] Failed to load file : " + script)
+            result.PutCString("".join(GlobalListOutput))
+            return
+        while True:
+            line = f.readline()
+            if not line: 
+                break
+            line = line.rstrip()
+            if not line:
+                break
+            debugger.HandleCommand(line)
+        f.close()
 
 #
 # Settings related commands
