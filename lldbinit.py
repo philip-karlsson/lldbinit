@@ -260,7 +260,6 @@ def __lldb_init_module(debugger, internal_dict):
     lldb.debugger.GetCommandInterpreter().HandleCommand("command script add -f lldbinit.bpt bpt", res)
     lldb.debugger.GetCommandInterpreter().HandleCommand("command script add -f lldbinit.bpn bpn", res)
     lldb.debugger.GetCommandInterpreter().HandleCommand("command script add -f lldbinit.bprva bprva", res)
-    lldb.debugger.GetCommandInterpreter().HandleCommand("command script add -f lldbinit.bprvam bprvam", res)
     lldb.debugger.GetCommandInterpreter().HandleCommand("command script add -f lldbinit.bpm bpm", res)
     # disable a breakpoint or all
     lldb.debugger.GetCommandInterpreter().HandleCommand("command script add -f lldbinit.bpd bpd", res)
@@ -378,7 +377,6 @@ def lldbinitcmds(debugger, command, result, dict):
     [ "bpl", "list all breakpoints"],
     [ "bpn", "temporarly breakpoint next instruction" ],
     [ "bprva", "add breakpoint at rva"],
-    [ "bprvam", "add breakpoint at rva in module"],
     [ "bpm", "recursivly add breakpoint to module"],
     [ "wp", "adds a read watchpoint at rva"],
     [ "break_entrypoint", "launch target and stop at entrypoint" ],
@@ -1365,14 +1363,13 @@ def bprva(debugger, command, result, dict):
     help = """
     Set a breakpoint at RVA.
 
-    Syntax: bprva <address>
+    Syntax: bprva <address> (optional)<module>
 
-    Note: expressions supported, do not use spaces between operators.
     """
 
     cmd = command.split()
-    if len(cmd) != 1:
-        print "[-] error: please insert a breakpoint address."
+    if len(cmd) < 1:
+        print "[-] error: plese fill in the correct params."
         print ""
         print help
         return
@@ -1380,75 +1377,18 @@ def bprva(debugger, command, result, dict):
         print help
         return
 
-    value = evaluate(cmd[0])
-    if value == None:
-        print "[-] error: invalid input value."
-        print ""
-        print help
-        return
+    if len(cmd) == 1:
+        slide = get_slide(None)
+    else:
+        slide = get_slide(cmd[1])
 
-    target = get_target()
-    mod = target.GetModuleAtIndex(0)
-    sec = mod.GetSectionAtIndex(0)
-    loadaddr = sec.GetLoadAddress(target)
-
-    if loadaddr == lldb.LLDB_INVALID_ADDRESS:
-        sec = mod.GetSectionAtIndex(1)
-        loadaddr = sec.GetLoadAddress(target)
-
-    addrVal = loadaddr + value
+    addr = evaluate(cmd[0])
+    # Add the slide
+    addr = addr + slide
     padding = 16 # 64 bits
-
-    hexStr = "{0:#0{1}x}".format(addrVal, padding)
-    debugger.HandleCommand("breakpoint set -a " + hexStr)
-    print "[+] Set breakpoint at RVA 0x{:x}".format(value)
-
-# Break at rva in module (still to be done..)
-def bprvam(debugger, command, result, dict):
-    # 'Set breakpoint at rva'
-    help = """
-    Set a breakpoint at RVA in a module.
-
-    Syntax: bprva <module> <address>
-
-    Note: expressions supported, do not use spaces between operators.
-    """
-
-    cmd = command.split()
-    if len(cmd) != 1:
-        print "[-] error: please insert a breakpoint address."
-        print ""
-        print help
-        return
-    if cmd[0] == "help":
-        print help
-        return
-
-    value = evaluate(cmd[0])
-    if value == None:
-        print "[-] error: invalid input value."
-        print ""
-        print help
-        return
-
-    # Function for breakpoint
-    bp()
-
-    target = get_target()
-    mod = target.GetModuleAtIndex(0)
-    sec = mod.GetSectionAtIndex(0)
-    loadaddr = sec.GetLoadAddress(target)
-
-    if loadaddr == lldb.LLDB_INVALID_ADDRESS:
-        sec = mod.GetSectionAtIndex(1)
-        loadaddr = sec.GetLoadAddress(target)
-
-    addrVal = loadaddr + value
-    padding = 16 # 64 bits
-
-    hexStr = "{0:#0{1}x}".format(addrVal, padding)
-    debugger.HandleCommand("breakpoint set -a " + hexStr)
-    print "[+] Set breakpoint at RVA 0x{:x}".format(value)
+    hexStr = "{0:#0{1}x}".format(addr, padding)
+    cmd = "breakpoint set -a " + hexStr
+    debugger.HandleCommand(cmd)
 
 # Recursivly adds breakpoint to all functions of a module
 def bpm(debugger, command, result, dict):
