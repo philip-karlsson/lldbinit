@@ -496,18 +496,24 @@ def ss(debugger, command, result, dict):
             debugger.HandleCommand(line)
         f.close()
 
-def grva(debugger, command, result, dict):
+def _grva(reg):
     frame = get_frame()
     m = frame.GetModule()
+    # Get module name
+    name = m.GetFileSpec().GetFilename()
+    slide = get_slide(name)
+    rva = int(frame.reg[reg].value, 16) - slide
+    return rva
+
+def grva(debugger, command, result, dict):
+    # Get module name
+    name = get_frame().GetModule().GetFileSpec().GetFilename()
     cmd = command.split()
     if len(cmd) == 0:
         reg = "rip"
     else:
         reg = cmd[0]
-    # Get module name
-    name = m.GetFileSpec().GetFilename()
-    slide = get_slide(name)
-    rva = int(frame.reg[reg].value, 16) - slide
+    rva = _grva(reg)
     padding = 2
     hexStr = "{0:#0{1}x}".format(rva, padding)
     print(("%s (%s) RVA: " % (reg, name)) + hexStr)
@@ -3280,6 +3286,11 @@ def reg64():
         color(COLOR_REGVAL_MODIFIED)
     output("0x%.016lX" % (r15))
     old_r15 = r15
+
+    color(COLOR_REGNAME)
+    output("  RVA: ")
+    color(COLOR_REGVAL_MODIFIED)
+    output("0x%.016lX" % (_grva("rip")))
     output("\n")
         
     color(COLOR_REGNAME)
