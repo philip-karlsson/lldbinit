@@ -234,6 +234,7 @@ def __lldb_init_module(debugger, internal_dict):
     lldb.debugger.GetCommandInterpreter().HandleCommand("command script add -f lldbinit.IphoneConnect iphone", res)
     lldb.debugger.GetCommandInterpreter().HandleCommand("command script add -f lldbinit.stop stop", res)
     lldb.debugger.GetCommandInterpreter().HandleCommand("command script add -f lldbinit.ss ss", res)
+    lldb.debugger.GetCommandInterpreter().HandleCommand("command script add -f lldbinit.grva grva", res)
     #
     # dump memory commands
     #
@@ -398,6 +399,7 @@ def lldbinitcmds(debugger, command, result, dict):
     [ "iphone", "connect to debugserver running on iPhone" ],
     [ "stop", "interrupts the process" ],
     [ "ss", "source a file of commands to run" ],
+    [ "grva", "translate to rva" ],
     [ "ctx/context", "show current instruction pointer CPU context" ],
     [ "show_loadcmds", "show otool output of Mach-O load commands" ],
     [ "show_header", "show otool output of Mach-O header" ],
@@ -493,6 +495,22 @@ def ss(debugger, command, result, dict):
                 break
             debugger.HandleCommand(line)
         f.close()
+
+def grva(debugger, command, result, dict):
+    frame = get_frame()
+    m = frame.GetModule()
+    cmd = command.split()
+    if len(cmd) == 0:
+        reg = "rip"
+    else:
+        reg = cmd[0]
+    # Get module name
+    name = m.GetFileSpec().GetFilename()
+    slide = get_slide(name)
+    rva = int(frame.reg[reg].value, 16) - slide
+    padding = 2
+    hexStr = "{0:#0{1}x}".format(rva, padding)
+    print(("%s (%s) RVA: " % (reg, name)) + hexStr)
 
 #
 # Settings related commands
