@@ -240,6 +240,7 @@ def __lldb_init_module(debugger, internal_dict):
     # dump memory commands
     #
     lldb.debugger.GetCommandInterpreter().HandleCommand("command script add -f lldbinit.db db", res)
+    lldb.debugger.GetCommandInterpreter().HandleCommand("command script add -f lldbinit.dbreg dbreg", res)
     lldb.debugger.GetCommandInterpreter().HandleCommand("command script add -f lldbinit.dw dw", res)
     lldb.debugger.GetCommandInterpreter().HandleCommand("command script add -f lldbinit.dd dd", res)
     lldb.debugger.GetCommandInterpreter().HandleCommand("command script add -f lldbinit.dq dq", res)
@@ -1753,6 +1754,105 @@ def crackcmd_noret_callback(frame, bp_loc, internal_dict):
 '''
     Output nice memory hexdumps...
 '''
+# display byte values and ASCII characters
+def dbreg(debugger, command, result, dict):
+    '''Display hex dump in byte values and ASCII characters. Use \'db help\' for more information.'''
+    help = """
+Display memory hex dump in byte length and ASCII representation.
+
+Syntax: db [<address>]
+
+Note: if no address specified it will dump current instruction pointer address.
+Note: expressions supported, do not use spaces between operators.
+"""
+
+    global GlobalListOutput
+    GlobalListOutput = []
+        
+    cmd = command.split()
+
+    size = 0x100
+
+    if len(cmd) == 0:
+        dump_addr = get_current_pc()
+        if dump_addr == 0:
+            print "[-] error: invalid current address."
+            return
+    else:
+        if cmd[0] == "help":
+           print help
+           return        
+        dump_addr = int(get_frame().reg[cmd[0]].value, 16)
+        if dump_addr == None:
+            print "[-] error: invalid input address value."
+            print ""
+            print help
+            return
+        if len(cmd) == 2:
+            size = evaluate(cmd[1])
+
+    err = lldb.SBError()
+    rsize = size
+    while size != 0:
+        membuff = get_process().ReadMemory(dump_addr, size, err)
+        if err.Success() == False and size == 0:
+            output(str(err))
+            result.PutCString("".join(GlobalListOutput))
+            return
+        if err.Success() == True:
+            break
+        size = size - 1
+    membuff = membuff + "\x00" * (rsize-size) 
+    color(BLUE)
+    if get_pointer_size() == 4:
+        output("[0x0000:0x%.08X]" % dump_addr)
+        output("------------------------------------------------------")
+    else:
+        output("[0x0000:0x%.016lX]" % dump_addr)
+        output("------------------------------------------------------")
+    color_bold()
+    output("[data]")
+    color_reset()
+    output("\n")        
+    #output(hexdump(dump_addr, membuff, " ", 16));
+    index = 0
+    while index < rsize:
+        data = struct.unpack("B"*16, membuff[index:index+0x10])
+        if get_pointer_size() == 4:
+            szaddr = "0x%.08X" % dump_addr
+        else:
+            szaddr = "0x%.016lX" % dump_addr
+        fmtnice = "%.02X %.02X %.02X %.02X %.02X %.02X %.02X %.02X"
+        fmtnice = fmtnice + " - " + fmtnice
+        output("\033[1m%s :\033[0m %.02X %.02X %.02X %.02X %.02X %.02X %.02X %.02X - %.02X %.02X %.02X %.02X %.02X %.02X %.02X %.02X \033[1m%s\033[0m" % 
+            (szaddr, 
+            data[0], 
+            data[1], 
+            data[2], 
+            data[3], 
+            data[4], 
+            data[5], 
+            data[6], 
+            data[7], 
+            data[8], 
+            data[9], 
+            data[10], 
+            data[11], 
+            data[12], 
+            data[13], 
+            data[14], 
+            data[15], 
+            quotechars(membuff[index:index+0x10])));
+        if index + 0x10 != rsize:
+            output("\n")
+        index += 0x10
+        dump_addr += 0x10
+    color_reset()
+    #last element of the list has all data output...
+    #so we remove last \n
+    result.PutCString("".join(GlobalListOutput))
+    result.SetStatus(lldb.eReturnStatusSuccessFinishResult)
+
 # display byte values and ASCII characters
 def db(debugger, command, result, dict):
     '''Display hex dump in byte values and ASCII characters. Use \'db help\' for more information.'''
