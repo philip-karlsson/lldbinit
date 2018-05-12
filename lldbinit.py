@@ -235,6 +235,7 @@ def __lldb_init_module(debugger, internal_dict):
     lldb.debugger.GetCommandInterpreter().HandleCommand("command script add -f lldbinit.stop stop", res)
     lldb.debugger.GetCommandInterpreter().HandleCommand("command script add -f lldbinit.ss ss", res)
     lldb.debugger.GetCommandInterpreter().HandleCommand("command script add -f lldbinit.grva grva", res)
+    lldb.debugger.GetCommandInterpreter().HandleCommand("command script add -f lldbinit.tr tr", res)
     #
     # dump memory commands
     #
@@ -518,6 +519,19 @@ def grva(debugger, command, result, dict):
     hexStr = "{0:#0{1}x}".format(rva, padding)
     print(("%s (%s) RVA: " % (reg, name)) + hexStr)
 
+def tr(debugger, command, result, dict):
+    cmd = command.split()
+    value = evaluate(cmd[0])
+    frame = get_frame()
+    m = frame.GetModule()
+    # Get module name
+    name = m.GetFileSpec().GetFilename()
+    slide = get_slide(name)
+    rva = value - slide
+    padding = 2
+    hexStr = "{0:#0{1}x}".format(rva, padding)
+    print("Value: " + hexStr)
+ 
 #
 # Settings related commands
 #
