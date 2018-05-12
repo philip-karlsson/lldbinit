@@ -1770,12 +1770,14 @@ Note: expressions supported, do not use spaces between operators.
         
     cmd = command.split()
 
+    size = 0x100
+
     if len(cmd) == 0:
         dump_addr = get_current_pc()
         if dump_addr == 0:
             print "[-] error: invalid current address."
             return
-    elif len(cmd) == 1:
+    else:
         if cmd[0] == "help":
            print help
            return        
@@ -1785,14 +1787,11 @@ Note: expressions supported, do not use spaces between operators.
             print ""
             print help
             return
-    else:
-        print "[-] error: please insert a start address."
-        print ""
-        print help
-        return
+        if len(cmd) == 2:
+            size = evaluate(cmd[1])
 
     err = lldb.SBError()
-    size = 0x100
+    rsize = size
     while size != 0:
         membuff = get_process().ReadMemory(dump_addr, size, err)
         if err.Success() == False and size == 0:
@@ -1802,7 +1801,7 @@ Note: expressions supported, do not use spaces between operators.
         if err.Success() == True:
             break
         size = size - 1
-    membuff = membuff + "\x00" * (0x100-size) 
+    membuff = membuff + "\x00" * (rsize-size) 
     color(BLUE)
     if get_pointer_size() == 4:
         output("[0x0000:0x%.08X]" % dump_addr)
@@ -1816,7 +1815,7 @@ Note: expressions supported, do not use spaces between operators.
     output("\n")        
     #output(hexdump(dump_addr, membuff, " ", 16));
     index = 0
-    while index < 0x100:
+    while index < rsize:
         data = struct.unpack("B"*16, membuff[index:index+0x10])
         if get_pointer_size() == 4:
             szaddr = "0x%.08X" % dump_addr
@@ -1843,7 +1842,7 @@ Note: expressions supported, do not use spaces between operators.
             data[14], 
             data[15], 
             quotechars(membuff[index:index+0x10])));
-        if index + 0x10 != 0x100:
+        if index + 0x10 != rsize:
             output("\n")
         index += 0x10
         dump_addr += 0x10
